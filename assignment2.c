@@ -52,11 +52,25 @@ void runSystemCommand(struct command *cmd, int bg)
 int parse()
 {
     if(cmdline == NULL)
+    {
         printf("CommandLine is NULL");
+        return 0;
+    }
     
     cmd.argv[0]= strtok(cmdline,"-");
-    
-    printf("%s",cmd.argv[0]);
+    for(int i=0;cmd.argv[i]!=NULL;i++)
+    {
+        cmd.argc++;     //number of arguments including the command itself
+        cmd.argv[i+1] = strtok(0,"-");
+        printf("%s\t",cmd.argv[i+1]);
+    }
+    printf("%d",cmd.argc);
+    printf("\n0th argument is %s\n",cmd.argv[0]);
+
+    if(cmdline[strlen(cmdline)-1] == '&')
+        return 1;
+    else 
+        return 0;
 
 }
 
@@ -120,9 +134,9 @@ void eval()
     if(bg == 1)
         return;
     // if command is empty, ignore
-    if(cmd.argv[0] == NULL)
+    if(cmd.argv[0]==NULL)   
         return;
-    
+
     if(cmd.builtin == NONE)
         runSystemCommand(&cmd, bg);
     else
