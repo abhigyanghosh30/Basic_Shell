@@ -49,20 +49,14 @@ void runSystemCommand(struct command *cmd, int bg)
     }
 }
 
-int parse(char *cmdline, struct command *cmd)
+int parse()
 {
     if(cmdline == NULL)
         printf("CommandLine is NULL");
     
-    char* tok = strtok(cmdline,"-");
-    tok = cmd->argv[i];
-    for(int i=0; tok != NULL;i++)
-    {
-        printf("%s\n",tok);
-        tok = cmd->argv[i];
-        printf("%s\n",*cmd->argv[i]);
-        tok = strtok(cmdline,"-");
-    }
+    cmd.argv[0]= strtok(cmdline,"-");
+    
+    printf("%s",cmd.argv[0]);
 
 }
 
@@ -116,12 +110,11 @@ int parse(char *cmdline, struct command *cmd)
 void eval()
 {
     int bg;
-    struct command cmd;
 
     printf("Evaluating '%s'\n",cmdline);
 
     // parse the line to fit values into cmd structure
-    bg = parse(cmdline, &cmd);
+    bg = parse();
 
     //if errors in parsing
     if(bg == 1)
