@@ -3,8 +3,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #include <error.h>
+#include <dirent.h>
 
 
 #define MAXLINE 1024
@@ -14,10 +17,7 @@ struct command
 {
     int argc;               //count of arguments
     char *argv[MAXARGS];    //pointer to list of arguments
-    enum builtin_t
-    {
-        QUIT, JOBS, BG, FG
-    } builtin; 
+    int bg; 
 };
 
 //global variables
@@ -45,31 +45,40 @@ void strip() //similar to the strip function in Python
 
 int shell_ls()
 {
-    ;;
-}
-
-void runBuiltinCommand(){}
-void runSystemCommand(struct command *cmd, int bg)
-{
-    pid_t childPid;
-
-    if((childPid = fork()) < 0)
-        printf("fork() error");
-    else if (childPid == 0)
+    int a=0, l=0;
+    for(int i=1;i<cmd.argc;i++)
     {
-        if(execvp(cmd->argv[0],cmd->argv)< 0)
+        for(int j=0;j<strlen(cmd.argv[i]);j++)
         {
-            printf("%s: Command not found\n", cmd->argv[0]);
-            exit(0);
+            if(cmd.argv[i][j] == 'a')
+            {    a=1;
+                printf("a");
+            }
+            if(cmd.argv[i][j] == 'l')
+            {
+                l=1;
+                printf("l");
+            }
+
         }
     }
-    else
+    char *pointer=NULL;
+    DIR *dp=NULL;
+    struct dirent *sd=NULL;
+    pointer = getenv("PWD");    
+    dp=opendir((const char*)pointer);
+    while((sd=readdir(dp))!=NULL)
     {
-        if(bg)
-            printf("Child in background [%d]\n",childPid);
+        if(strcmp(sd->d_name,"..")==0 || strcmp(sd->d_name,".")==0)
+        {
+            if(a==1)
+                printf("%s  \t ",sd->d_name);
+        }
         else
-            wait(&childPid);
+            printf("%s  \t ",sd->d_name);
+
     }
+    printf("\n"); 
 }
 
 int parse()
@@ -98,7 +107,7 @@ int parse()
 }
 
 
-void eval()
+int eval()
 {
     int bg;
 
@@ -111,10 +120,10 @@ void eval()
 
     //if errors in parsing
     if(bg == 1)
-        return;
+        return 1;
     // if command is empty, ignore
     if(cmd.argv[0]==NULL)   
-        return;
+        return 1;
 
     if(!strcmp(cmd.argv[0],"ls"))
     {
@@ -125,6 +134,12 @@ void eval()
     {
         printf("Evaluating change dir\n");
     }
+    else if(!strcmp(cmd.argv[0],"exit"))
+    {
+        printf("Quitting");
+        return 0;
+    }
+    return 1;
 }
 
 int main(int argc, char **argv)
@@ -140,7 +155,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    while(1)
+    do
     {
         printf("%s",prompt);
         cmd.argc = 0;
@@ -158,7 +173,7 @@ int main(int argc, char **argv)
             exit(0);
         }
 
-        eval(cmdline);      // evaluates the given command. Also parses it before that
-    }
+              // evaluates the given command. Also parses it before that
+    }while(eval(cmdline));
     return 0;
 }
