@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <pwd.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -24,6 +25,7 @@ struct command
 struct command cmd;
 char *cmdline;
 char prompt[MAXLINE];
+char pwd[MAXLINE];
 
 void strip() //similar to the strip function in Python
 {
@@ -43,6 +45,11 @@ void strip() //similar to the strip function in Python
     }
 }
 
+int shell_cd()
+{
+    return chdir(cmd.argv[cmd.argc-1]);
+}
+
 int shell_ls()
 {
     int a=0, l=0;
@@ -52,7 +59,7 @@ int shell_ls()
         {
             if(cmd.argv[i][j] == 'a')
             {    a=1;
-                printf("a");
+                printf("a ");
             }
             if(cmd.argv[i][j] == 'l')
             {
@@ -65,17 +72,62 @@ int shell_ls()
     char *pointer=NULL;
     DIR *dp=NULL;
     struct dirent *sd=NULL;
-    pointer = getenv("PWD");    
+    pointer = ".";    
     dp=opendir((const char*)pointer);
     while((sd=readdir(dp))!=NULL)
     {
-        if(strcmp(sd->d_name,"..")==0 || strcmp(sd->d_name,".")==0)
+        if(sd->d_name[0]=='.')
         {
-            if(a==1)
-                printf("%s  \t ",sd->d_name);
+            if(a==0)
+                continue;
+            if(l==1)
+            {
+                struct stat buf;
+                stat(sd->d_name,&buf);
+                printf( (S_ISDIR(buf.st_mode)) ? "d" : "-");
+                printf( (buf.st_mode & S_IRUSR) ? "r" : "-");
+                printf( (buf.st_mode & S_IWUSR) ? "w" : "-");
+                printf( (buf.st_mode & S_IXUSR) ? "x" : "-");
+                printf( (buf.st_mode & S_IRGRP) ? "r" : "-");
+                printf( (buf.st_mode & S_IWGRP) ? "w" : "-");
+                printf( (buf.st_mode & S_IXGRP) ? "x" : "-");
+                printf( (buf.st_mode & S_IROTH) ? "r" : "-");
+                printf( (buf.st_mode & S_IWOTH) ? "w" : "-");
+                printf( (buf.st_mode & S_IXOTH) ? "x" : "-");
+                printf("\t%s\n",sd->d_name);
+                    
+            }
+            else
+            {
+                printf("\t%s\n",sd->d_name);
+            }
         }
         else
-            printf("%s  \t ",sd->d_name);
+        {
+            if(l==1)
+            {
+                struct stat buf;
+                stat(sd->d_name,&buf);
+                printf( (S_ISDIR(buf.st_mode)) ? "d" : "-");
+                printf( (buf.st_mode & S_IRUSR) ? "r" : "-");
+                printf( (buf.st_mode & S_IWUSR) ? "w" : "-");
+                printf( (buf.st_mode & S_IXUSR) ? "x" : "-");
+                printf( (buf.st_mode & S_IRGRP) ? "r" : "-");
+                printf( (buf.st_mode & S_IWGRP) ? "w" : "-");
+                printf( (buf.st_mode & S_IXGRP) ? "x" : "-");
+                printf( (buf.st_mode & S_IROTH) ? "r" : "-");
+                printf( (buf.st_mode & S_IWOTH) ? "w" : "-");
+                printf( (buf.st_mode & S_IXOTH) ? "x" : "-");
+                printf("\t%s\n",sd->d_name);
+
+            }
+            else
+            {
+                printf("\t%s\n",sd->d_name);
+            }
+
+        }
+        
 
     }
     printf("\n"); 
@@ -133,18 +185,32 @@ int eval()
     else if(!strcmp(cmd.argv[0],"cd"))
     {
         printf("Evaluating change dir\n");
+        shell_cd();
     }
     else if(!strcmp(cmd.argv[0],"exit"))
     {
-        printf("Quitting");
+        printf("Quitting\n");
         return 0;
     }
     return 1;
 }
 
+void makeprompt()
+{
+    uid_t uid = geteuid();
+    struct passwd *pw = getpwuid(uid);
+    if (pw)
+        strcpy(prompt,pw->pw_name);
+    strcat(prompt,"@");
+    strcat(prompt,getenv("HOME"));
+}
+
 int main(int argc, char **argv)
 {
-    strcpy(prompt,getenv("HOME"));
+    int ret = chdir(getenv("HOME"));
+    if(ret!=0)
+        printf("chdir didnot work");
+    makeprompt();
     int length_of_prompt = strlen(prompt);
     prompt[length_of_prompt] = '>';
     prompt[++length_of_prompt] = '\0';
