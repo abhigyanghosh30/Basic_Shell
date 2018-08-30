@@ -46,15 +46,36 @@ void strip() //similar to the strip function in Python
     }
 }
 
+//Shell Inbuilt Commands in here
+
 int shell_cd()
 {
-    
-    if(chdir(cmd.argv[cmd.argc-1])==0)
+    if(cmd.argc==1)
+    {
+        if(chdir(getenv("HOME"))==0)
+        {
+            getcwd(pwd,MAXLINE);
+            makeprompt();
+            return 1;
+        }
+    }
+    char new_dir[MAXLINE];
+    for(int i=1;i<cmd.argc;i++)
+    {
+        strcpy(new_dir,cmd.argv[i]);
+    }
+    if(chdir(cmd.argv[1])==0)
     {    
         getcwd(pwd,MAXLINE);
         makeprompt();
         return 1;
     }
+}
+
+int shell_pwd()
+{
+    printf("%s\n",pwd);
+    return 0;
 }
 
 int shell_ls()
@@ -214,6 +235,10 @@ int eval()
         printf("Evaluating change dir\n");
         shell_cd();
     }
+    else if(!strcmp(cmd.argv[0],"pwd"))
+    {
+        shell_pwd();
+    }
     else if(!strcmp(cmd.argv[0],"exit"))
     {
         printf("Quitting\n");
@@ -230,6 +255,9 @@ void makeprompt()
         strcpy(prompt,pw->pw_name);
     strcat(prompt,"@");
     strcat(prompt,pwd);
+    int length_of_prompt = strlen(prompt);
+    prompt[length_of_prompt] = '>';
+    prompt[++length_of_prompt] = '\0';
 }
 
 int main(int argc, char **argv)
@@ -239,9 +267,7 @@ int main(int argc, char **argv)
     if(ret!=0)
         printf("chdir didnot work");
     makeprompt();
-    int length_of_prompt = strlen(prompt);
-    prompt[length_of_prompt] = '>';
-    prompt[++length_of_prompt] = '\0';
+    
 
     cmdline = malloc(MAXLINE);
     if (cmdline == NULL) {
