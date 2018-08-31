@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <error.h>
 #include <dirent.h>
+#include <time.h>
 
 
 #define MAXLINE 1024
@@ -18,8 +19,7 @@
 struct command
 {
     int argc;               //count of arguments
-    char *argv[MAXARGS];    //pointer to list of arguments
-    int bg; 
+    char *argv[MAXARGS];    //pointer to list of arguments 
 };
 
 //global variables
@@ -27,6 +27,32 @@ struct command cmd;
 char *cmdline;
 char prompt[MAXLINE];
 char pwd[MAXLINE];
+int bgcount=0;
+
+void handler(int sig)
+{
+  pid_t pid;
+  pid = wait(NULL);
+  if(pid!=-1)
+    printf("\n[%d] done.\n", pid);
+  bgcount--;
+}
+
+void makeprompt()
+{
+    uid_t uid = geteuid();
+    struct passwd *pw = getpwuid(uid);
+    //char *name;
+    //gethostname(name,MAXLINE);
+    if (pw)
+        strcpy(prompt,pw->pw_name);
+    strcat(prompt,"@");
+    //strcat(prompt,name);
+    strcat(prompt,pwd);
+    int length_of_prompt = strlen(prompt);
+    prompt[length_of_prompt] = '>';
+    prompt[++length_of_prompt] = '\0';
+}
 
 void strip() //similar to the strip function in Python
 {
@@ -35,7 +61,7 @@ void strip() //similar to the strip function in Python
         if(cmd.argv[i]==NULL)
             break;
         int len=strlen(cmd.argv[i]);
-        printf("%d\t",len);
+        // printf("%d\t",len);
         for(int j=len-1;j>=0;j--)
         {
             if(cmd.argv[i][j] == ' ')
@@ -48,6 +74,63 @@ void strip() //similar to the strip function in Python
 
 //Shell Inbuilt Commands in here
 
+int shell_execvp()
+{
+    return execvp(cmd.argv[0],cmd.argv);
+}
+
+int shell_echo()
+{
+    for(int i=1;i<cmd.argc;i++)
+    {
+        printf("%s ",cmd.argv[i]);
+    }
+    printf("\n");
+    return 0;
+}
+
+int shell_pinfo()
+{   
+    pid_t pid = getpid();
+    char dir[100];
+    if(cmd.argc==1)
+        sprintf(dir,"/proc/%d/status",pid);
+    else
+        sprintf(dir,"/proc/%s/status",cmd.argv[1]);
+    
+    int fd = open(dir,O_RDONLY);
+    char buf[4096];
+    read(fd,buf,4096);
+    char *line;
+    line = strtok(buf,"\n");
+    line = strtok(0,"\n");
+    line = strtok(0,"\n");
+    printf("Process %s\n",line);
+    line = strtok(0,"\n");
+    line = strtok(0,"\n");
+    line = strtok(0,"\n");
+    printf("Process %s\n",line);
+    
+    if(cmd.argc==1)
+        sprintf(dir,"/proc/%d/statm",pid);
+    else
+        sprintf(dir,"/proc/%s/statm",cmd.argv[1]);
+    
+    fd=open(dir,O_RDONLY);
+    read(fd,buf,4096);
+    line = strtok(buf," ");
+    printf("Virtual Memory: %s\n",line);
+
+    if(cmd.argc==1)
+        sprintf(dir,"/proc/%d/exe",pid);
+    else
+        sprintf(dir,"/proc/%s/exe",cmd.argv[1]);
+    int len = readlink(dir,buf,sizeof(buf)-1);
+    buf[len]='\0';
+    printf("Executable Path : %s\n",buf);
+    return 0;
+}
+
 int shell_cd()
 {
     if(cmd.argc==1)
@@ -56,7 +139,7 @@ int shell_cd()
         {
             getcwd(pwd,MAXLINE);
             makeprompt();
-            return 1;
+            return 0;
         }
     }
     char new_dir[MAXLINE];
@@ -68,7 +151,7 @@ int shell_cd()
     {    
         getcwd(pwd,MAXLINE);
         makeprompt();
-        return 1;
+        return 0;
     }
 }
 
@@ -89,15 +172,13 @@ int shell_ls()
         for(int j=0;j<strlen(cmd.argv[i]);j++)
         {
             if(cmd.argv[i][j] == 'a')
-            {    a=1;
-                printf("a");
+            {    
+                a=1;
             }
             if(cmd.argv[i][j] == 'l')
             {
                 l=1;
-                printf("l");
             }
-
         }
     }
     char *pointer=NULL;
@@ -136,6 +217,14 @@ int shell_ls()
                 printf("\t%s",getpwuid(buf.st_uid)->pw_name);                
                 printf("\t%s",getgrgid(buf.st_gid)->gr_name);                
                 printf("\t%ld",buf.st_size);
+                time_t t = time(NULL);
+                struct tm *tmp = localtime(&t);
+                char outstr[200];
+                if(tmp->tm_year == localtime(&buf.st_ctime)->tm_year)
+                    strftime(outstr, sizeof(outstr), "%b %e %R", localtime(&buf.st_ctime));
+                else
+                    strftime(outstr, sizeof(outstr), "%b %e %Y", localtime(&buf.st_ctime));
+                printf("\t%s", outstr);
                 printf("\t%s\n",sd->d_name);
                     
             }
@@ -164,10 +253,16 @@ int shell_ls()
                 printf("\t%ld",buf.st_nlink);
                 printf("\t%s",getpwuid(buf.st_uid)->pw_name);  
                 printf("\t%s",getgrgid(buf.st_gid)->gr_name);                
-
                 printf("\t%ld",buf.st_size);
+                time_t t = time(NULL);
+                struct tm *tmp = localtime(&t);
+                char outstr[200];
+                if(tmp->tm_year == localtime(&buf.st_ctime)->tm_year)
+                    strftime(outstr, sizeof(outstr), "%b %e %R", localtime(&buf.st_ctime));
+                else
+                    strftime(outstr, sizeof(outstr), "%b %e %Y", localtime(&buf.st_ctime));
+                printf("\t%s", outstr);
                 printf("\t%s\n",sd->d_name);
-
             }
             else
             {
@@ -179,6 +274,7 @@ int shell_ls()
 
     }
     printf("\n"); 
+    return 0;
 }
 
 int parse()
@@ -194,13 +290,15 @@ int parse()
     {
         cmd.argc++;     //number of arguments including the command itself
         cmd.argv[i+1] = strtok(0," ");
-        printf("%s\t",cmd.argv[i+1]);
     }
-    printf("%d",cmd.argc);
-    printf("\n0th argument is %s\n",cmd.argv[0]);
 
-    if(cmdline[strlen(cmdline)-1] == '&')
+    if(cmd.argc>=1 && cmd.argv[cmd.argc-1][0]=='&')
+    {
+        printf("removed &");
+        --cmd.argc;
+        cmd.argv[cmd.argc]=NULL;
         return 1;
+    }
     else 
         return 0;
 
@@ -217,48 +315,76 @@ int eval()
     bg = parse();
 
     strip();    // strips off trailing whitespaces
-
-    //if errors in parsing
-    if(bg == 1)
-        return 1;
+    
     // if command is empty, ignore
-    if(cmd.argv[0]==NULL)   
+    if(cmd.argv[0]==NULL)
+    {
+        printf("No command passed\n");   
         return 1;
-
+    }
     if(!strcmp(cmd.argv[0],"ls"))
     {
         printf("Evaluating list\n");
-        shell_ls();
+        
+        return !shell_ls();
+         
     }
     else if(!strcmp(cmd.argv[0],"cd"))
     {
         printf("Evaluating change dir\n");
-        shell_cd();
+        return !shell_cd();
     }
     else if(!strcmp(cmd.argv[0],"pwd"))
     {
-        shell_pwd();
+        return !shell_pwd();
     }
     else if(!strcmp(cmd.argv[0],"exit"))
     {
         printf("Quitting\n");
         return 0;
     }
+    else if(!strcmp(cmd.argv[0],"echo"))
+    {
+        return !shell_echo();
+    }
+    else if(!strcmp(cmd.argv[0],"pinfo"))
+    {
+        return !shell_pinfo();
+    }
+    else
+    {
+        
+        pid_t pid = fork();
+        int status;
+        if(pid == -1)
+        {
+            printf("Error forking");
+        }
+        else if(pid!=0)
+        {
+            if(bg!=1)
+            {
+                waitpid(pid,&status,WUNTRACED);    
+            }
+            else
+            {
+                waitpid(pid,&status,WNOHANG);
+            }
+        }
+        else if(pid==0)
+        {
+            printf("Evaluating %s\n",cmd.argv[0]);
+            int ret = shell_execvp();
+            printf("Process terminated successfully");
+            exit(0);
+            return ret;
+        }
+        
+    }
     return 1;
 }
 
-void makeprompt()
-{
-    uid_t uid = geteuid();
-    struct passwd *pw = getpwuid(uid);
-    if (pw)
-        strcpy(prompt,pw->pw_name);
-    strcat(prompt,"@");
-    strcat(prompt,pwd);
-    int length_of_prompt = strlen(prompt);
-    prompt[length_of_prompt] = '>';
-    prompt[++length_of_prompt] = '\0';
-}
+
 
 int main(int argc, char **argv)
 {
@@ -277,6 +403,8 @@ int main(int argc, char **argv)
 
     do
     {
+        signal(SIGCHLD, handler);
+
         printf("%s",prompt);
         cmd.argc = 0;
         if((fgets(cmdline,MAXLINE,stdin)==NULL) && ferror(stdin))
