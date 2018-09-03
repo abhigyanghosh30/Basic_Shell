@@ -72,6 +72,47 @@ void strip() //similar to the strip function in Python
     }
 }
 
+// Shell Custom Commands
+int shell_reminder()
+{
+    printf("Evaluating RemindMe\n");
+    sleep(atoi(cmd.argv[1]));
+    printf("\n");
+    for(int i=2;i<cmd.argc;i++)
+    {
+        printf("%s",cmd.argv[i]);
+    }
+    printf("\n");
+    return 0;
+}
+
+int shell_clock()
+{
+    int n=5,t=1;
+    for(int i=0;i<cmd.argc;i++)
+    {
+        if(cmd.argv[i][0]=='-')
+        {
+            if(cmd.argv[i][1]=='n')
+                n = atoi(cmd.argv[++i]);
+            else if(cmd.argv[i][1]=='t')
+                t = atoi(cmd.argv[++i]);
+        }
+    }
+    for(int i=1;i<=n;i++)
+    {
+        time_t curtime;
+        struct tm *loc_time;
+        curtime = time (NULL);
+        loc_time = localtime (&curtime);
+        char buf[50];
+        strftime (buf,50, "%d %b %Y, %T\n", loc_time);
+        fputs(buf,stdout);
+        sleep(t);
+    }
+    return 0;
+}
+
 //Shell Inbuilt Commands in here
 
 int shell_execvp()
@@ -291,12 +332,19 @@ int parse()
         cmd.argc++;     //number of arguments including the command itself
         cmd.argv[i+1] = strtok(0," ");
     }
-
-    if(cmd.argc>=1 && cmd.argv[cmd.argc-1][0]=='&')
+    if(cmd.argc==0)
+    {
+        return 0;
+    }
+    else if(cmd.argc>=1 && cmd.argv[cmd.argc-1][0]=='&')
     {
         printf("removed &");
         --cmd.argc;
         cmd.argv[cmd.argc]=NULL;
+        return 1;
+    }
+    else if(!strcmp(cmd.argv[0],"remindme"))
+    {
         return 1;
     }
     else 
@@ -351,6 +399,10 @@ int eval()
     {
         return !shell_pinfo();
     }
+    else if(!strcmp(cmd.argv[0],"clock"))
+    {
+        return !shell_clock(); 
+    }
     else
     {
         
@@ -373,11 +425,19 @@ int eval()
         }
         else if(pid==0)
         {
-            printf("Evaluating %s\n",cmd.argv[0]);
-            int ret = shell_execvp();
-            printf("Process terminated successfully");
-            exit(0);
-            return ret;
+            if(!strcmp(cmd.argv[0],"remindme"))
+            {
+                printf("Executing Remindme");
+                shell_reminder();
+                exit(0);
+            }
+            else
+            {
+                printf("Evaluating %s\n",cmd.argv[0]);
+                shell_execvp();
+                printf("Process terminated successfully");
+                exit(0);
+            }
         }
         
     }
