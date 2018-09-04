@@ -34,13 +34,8 @@ void handler(int sig)
 {
   pid_t pid;
   pid = wait(NULL);
-  char fname[4096];
-  sprintf(fname,"/proc/%d/cmdline",pid);
-  int fd = open(fname,O_RDONLY);
-  char buf[4096];
-  read(fd,buf,4096);
   if(pid!=-1)
-    printf("\n%s with pid %d exitted normally.\n",buf,pid);
+    printf("\nProcess with pid %d exitted normally.\n",pid);
   bgcount--;
 
 }
@@ -103,12 +98,12 @@ void strip() //similar to the strip function in Python
 // Shell Custom Commands
 int shell_reminder()
 {
-    printf("Evaluating RemindMe\n");
+    //printf("Evaluating RemindMe\n");
     sleep(atoi(cmd.argv[1]));
     printf("\n");
     for(int i=2;i<cmd.argc;i++)
     {
-        printf("%s",cmd.argv[i]);
+        printf("%s ",cmd.argv[i]);
     }
     printf("\n");
     return 0;
@@ -454,7 +449,7 @@ int eval()
         int status;
         if(pid == -1)
         {
-            printf("Error forking");
+            printf("Error forking\n");
         }
         else if(pid!=0)
         {
