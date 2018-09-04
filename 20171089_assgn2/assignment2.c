@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <error.h>
@@ -54,11 +55,16 @@ void makeprompt()
     if (pw)
         strcpy(prompt,pw->pw_name);
     strcat(prompt,"@");
-    //strcat(prompt,name);
+    struct utsname u;
+    uname (&u);
+    strcat(prompt,u.nodename);
+    strcat(prompt,":");
     char HOME[100];
+    
     strcpy(HOME,getenv("HOME"));
-    printf("%s\t",HOME);
-    printf("%s\n",pwd);
+    // printf("%s\t",HOME);
+    // printf("%s\n",pwd);
+
     if(strlen(HOME)<=strlen(pwd))
     {
         sprintf(prompt,"%s~",prompt);
@@ -72,7 +78,7 @@ void makeprompt()
         strcat(prompt,pwd);
     }
     int length_of_prompt = strlen(prompt);
-    prompt[length_of_prompt] = '>';
+    prompt[length_of_prompt] = '$';
     prompt[++length_of_prompt] = '\0';
 }
 
@@ -504,7 +510,7 @@ int main(int argc, char **argv)
     {
         signal(SIGCHLD, handler);
 
-        printf("%s",prompt);
+        printf("%s ",prompt);
         cmd.argc = 0;
         if((fgets(cmdline,MAXLINE,stdin)==NULL) && ferror(stdin))
             printf("fgets error");
