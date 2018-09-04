@@ -33,10 +33,17 @@ void handler(int sig)
 {
   pid_t pid;
   pid = wait(NULL);
+  char fname[4096];
+  sprintf(fname,"/proc/%d/cmdline",pid);
+  int fd = open(fname,O_RDONLY);
+  char buf[4096];
+  read(fd,buf,4096);
   if(pid!=-1)
-    printf("\n[%d] done.\n", pid);
+    printf("\n%s with pid %d exitted normally.\n",buf,pid);
   bgcount--;
+
 }
+
 
 void makeprompt()
 {
@@ -48,7 +55,22 @@ void makeprompt()
         strcpy(prompt,pw->pw_name);
     strcat(prompt,"@");
     //strcat(prompt,name);
-    strcat(prompt,pwd);
+    char HOME[100];
+    strcpy(HOME,getenv("HOME"));
+    printf("%s\t",HOME);
+    printf("%s\n",pwd);
+    if(strlen(HOME)<=strlen(pwd))
+    {
+        sprintf(prompt,"%s~",prompt);
+        for(int i=strlen(HOME);i<strlen(pwd);i++)
+        {
+            sprintf(prompt,"%s%c",prompt,pwd[i]);
+        }
+    }
+    else
+    {
+        strcat(prompt,pwd);
+    }
     int length_of_prompt = strlen(prompt);
     prompt[length_of_prompt] = '>';
     prompt[++length_of_prompt] = '\0';
@@ -117,7 +139,12 @@ int shell_clock()
 
 int shell_execvp()
 {
-    return execvp(cmd.argv[0],cmd.argv);
+    int ret = execvp(cmd.argv[0],cmd.argv);
+    if(ret==0)
+        printf("Exitted successfully\n");
+    else
+        printf("An error occurred\n");
+    return ret;
 }
 
 int shell_echo()
@@ -140,6 +167,11 @@ int shell_pinfo()
         sprintf(dir,"/proc/%s/status",cmd.argv[1]);
     
     int fd = open(dir,O_RDONLY);
+    if(fd == -1)
+    {
+        printf("Process doesnot exist\n");
+        return 0;
+    }
     char buf[4096];
     read(fd,buf,4096);
     char *line;
@@ -174,7 +206,7 @@ int shell_pinfo()
 
 int shell_cd()
 {
-    if(cmd.argc==1)
+    if(cmd.argc==1 || cmd.argv[1][0]=='~')
     {
         if(chdir(getenv("HOME"))==0)
         {
@@ -183,15 +215,21 @@ int shell_cd()
             return 0;
         }
     }
-    char new_dir[MAXLINE];
+    char new_dir[MAXLINE]="";
     for(int i=1;i<cmd.argc;i++)
     {
-        strcpy(new_dir,cmd.argv[i]);
+        sprintf(new_dir,"%s%s ",new_dir,cmd.argv[i]);
     }
-    if(chdir(cmd.argv[1])==0)
+    new_dir[strlen(new_dir)-1]='\0';
+    if(chdir(new_dir)==0)
     {    
         getcwd(pwd,MAXLINE);
         makeprompt();
+        return 0;
+    }
+    else
+    {
+        printf("Directory doesnot exist\n");
         return 0;
     }
 }
@@ -229,7 +267,7 @@ int shell_ls()
     if(cmd.argv[cmd.argc-1][0]=='-' || cmd.argc==1)
     {
         pointer = ".";
-        printf("This directory\n");    
+        //printf("This directory\n");    
     }
     else
         pointer = &cmd.argv[cmd.argc-1][0];
@@ -271,7 +309,7 @@ int shell_ls()
             }
             else
             {
-                printf("\t%s\n",sd->d_name);
+                printf("%s\t",sd->d_name);
             }
         }
         else
@@ -307,7 +345,7 @@ int shell_ls()
             }
             else
             {
-                printf("\t%s\n",sd->d_name);
+                printf("%s\t",sd->d_name);
             }
 
         }
@@ -326,11 +364,11 @@ int parse()
         return 0;
     }
     
-    cmd.argv[0]= strtok(cmdline," ");
+    cmd.argv[0]= strtok(cmdline," \t");
     for(int i=0;cmd.argv[i]!=NULL;i++)
     {
         cmd.argc++;     //number of arguments including the command itself
-        cmd.argv[i+1] = strtok(0," ");
+        cmd.argv[i+1] = strtok(0," \t");
     }
     if(cmd.argc==0)
     {
@@ -338,7 +376,7 @@ int parse()
     }
     else if(cmd.argc>=1 && cmd.argv[cmd.argc-1][0]=='&')
     {
-        printf("removed &");
+        //printf("removed &");
         --cmd.argc;
         cmd.argv[cmd.argc]=NULL;
         return 1;
@@ -357,7 +395,7 @@ int eval()
 {
     int bg;
 
-    printf("Evaluating '%s'\n",cmdline);
+    //printf("Evaluating '%s'\n",cmdline);
 
     // parse the line to fit values into cmd structure
     bg = parse();
@@ -372,14 +410,14 @@ int eval()
     }
     if(!strcmp(cmd.argv[0],"ls"))
     {
-        printf("Evaluating list\n");
+        //printf("Evaluating list\n");
         
         return !shell_ls();
          
     }
     else if(!strcmp(cmd.argv[0],"cd"))
     {
-        printf("Evaluating change dir\n");
+        //printf("Evaluating change dir\n");
         return !shell_cd();
     }
     else if(!strcmp(cmd.argv[0],"pwd"))
@@ -388,7 +426,7 @@ int eval()
     }
     else if(!strcmp(cmd.argv[0],"exit"))
     {
-        printf("Quitting\n");
+        //printf("Quitting\n");
         return 0;
     }
     else if(!strcmp(cmd.argv[0],"echo"))
@@ -427,15 +465,16 @@ int eval()
         {
             if(!strcmp(cmd.argv[0],"remindme"))
             {
-                printf("Executing Remindme");
+                //printf("Executing Remindme");
                 shell_reminder();
                 exit(0);
             }
             else
             {
-                printf("Evaluating %s\n",cmd.argv[0]);
-                shell_execvp();
-                printf("Process terminated successfully");
+                if(shell_execvp()==0)
+                    printf("Process terminated successfully\n");
+                else
+                    printf("An error ocurred\n");
                 exit(0);
             }
         }
@@ -473,7 +512,7 @@ int main(int argc, char **argv)
         if((strlen(cmdline)>0) && (cmdline[strlen(cmdline)-1] == '\n'))
             cmdline[strlen(cmdline) - 1] = '\0';
 
-        printf("%s\n",cmdline);
+        //printf("%s\n",cmdline);
 
         if(feof(stdin))
         {
