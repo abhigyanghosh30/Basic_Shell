@@ -12,7 +12,7 @@
 #include <error.h>
 #include <dirent.h>
 #include <time.h>
-
+#include <errno.h>
 
 #define MAXLINE 1024
 #define MAXARGS 128
@@ -23,14 +23,21 @@ struct command
     char *argv[MAXARGS];    //pointer to list of arguments 
 };
 
+struct proc{
+    int id;
+    char name[1024];
+    int state;
+};
+
+struct proc current_p;
+struct proc proc_list[1024];
+int bgcount=0;
+
 //global variables
 struct command cmd;
 char *cmdline;
 char prompt[MAXLINE];
 char pwd[MAXLINE];
-char *bg_processes[32768];
-int bg_order[32768];
-int bgcount=0;
 pid_t currentpid=-1;
 
 // global functions
@@ -47,13 +54,50 @@ void sigint_handler (int sig)
 
 void exit_handler(int sig)
 {
-    pid_t pid;
-    pid = wait(NULL);
-    if(pid!=-1)
+    printf("__in__\n");
+    if(sig == SIGINT)
     {
-      printf("\nProcess %s with pid %d exitted normally.\n",bg_processes[pid],pid);
+        //int killable = 1;
+        for(int i=0; i<bgcount; i++)
+        {
+            if(kill(proc_list[i].id, 0) == 0)
+            {
+                if(proc_list[i].state==1)
+                {
+                    kill(proc_list[i].id, SIGINT);
+                    //killable = 0;
+                }
+            }
+        }
+        //if(killable == 1)
+        //    kill(current_p.id, SIGINT);
+            
+        signal(SIGINT, SIG_IGN);
     }
-    bgcount--;
+    
+    if(sig == SIGSTOP);
+        signal(SIGSTOP, SIG_IGN);
+
+    if(sig == SIGTSTP);
+    {
+        if(current_p.id != -1)
+        {
+            strcpy(proc_list[bgcount].name, current_p.name);
+            proc_list[bgcount].id = current_p.id;
+            proc_list[bgcount].state = 0;
+            printf("Current Process id = %d\n", current_p.id);
+            bgcount++;
+            printf("Total # of Processes : %d\n", bgcount);
+            kill(current_p.id, SIGTSTP);
+
+            strcpy(current_p.name, "__!!!>>>%^%^");
+            current_p.id = -1;
+            current_p.state = -1;
+            signal(SIGTSTP, SIG_IGN);
+        }
+    }
+    fflush(stdout);
+    return;
 }
 
 void stop_handler(int sig)
@@ -83,7 +127,7 @@ void makeprompt()
     // printf("%s\t",HOME);
     // printf("%s\n",pwd);
 
-    if(strlen(HOME)<=strlen(pwd))
+    if(strlen(HOME) <= strlen(pwd))
     {
         sprintf(prompt,"%s~",prompt);
         for(int i=strlen(HOME);i<strlen(pwd);i++)
@@ -118,20 +162,28 @@ void strip() //similar to the strip function in Python
     }
 }
 
-
-
 // Shell Custom Commands
 int shell_setenv () {
+    if (cmd.argc !=2 && cmd.argc != 3)
+        return 1;
 	if (cmd.argv[2] == NULL) 
-        cmd.argv[2] = " ";
-	if (setenv(cmd.argv[1],cmd.argv[2],1) != 0) 
+        cmd.argv[2] = "";
+	if (setenv(cmd.argv[1],cmd.argv[2],1) != 0)
+    {
         perror("shell");
+        return 1;
+    }
 	return 0;	
 }
 
 int shell_unsetenv () {
-	if (unsetenv(cmd.argv[1]) != 0) 
+    if (cmd.argc != 2)
+        return 1;
+	if (unsetenv(cmd.argv[1]) != 0)
+    {
         perror("shell");
+        return 1;
+    }
 	return 0;
 }
 
@@ -179,12 +231,119 @@ int shell_clock()
 
 int shell_jobs()
 {
-    for(int i=0;i<32768;i++)
+    printf("Background Process Count : %d\n", bgcount);
+    int on,idx=1;
+    for(int i=0;i<bgcount;i++)
     {
-        if(bg_processes[i]!=NULL)
-            printf("%s %d\n",bg_processes[i],bg_order[i]);
+       if(kill(proc_list[i].id, 0) == 0)
+       {
+            char dir[100];
+            sprintf(dir,"/proc/%d/status",proc_list[i].id);
+            int fd = open(dir, O_RDONLY);
+            char buf[4096];
+            read(fd,buf,4096);
+            char *line;
+            line = strtok(buf,"\n");
+            line = strtok(0,"\n");
+            line = strtok(0,"\n");
+            //printf("Process %s\n",line);
+            //printf("Status %c\n",line[7]); 
+            char status[128];
+            if(line[7] == 'T')
+                strcpy(status, "STOPPED");
+            else
+                strcpy(status, "RUNNING");  
+            printf("[%d]\t%s\t%s\t[%d]\n", idx, status, proc_list[i].name, proc_list[i].id);
+            idx++;
+       }
     }
     return 0;
+}
+
+int shell_kjob()
+{
+    if(cmd.argc != 3)
+        return 1;
+    int job_id = atoi(cmd.argv[1]);
+    int sig_id = atoi(cmd.argv[2]);
+    int cnt = 0, stat, flag=0;
+    for(int i=0; i<bgcount; i++)
+    {
+        if(kill(proc_list[i].id, 0) == 0)
+        {
+            cnt++;
+            if(i+1 == job_id)
+            {
+                flag = 1;
+                kill(proc_list[i].id, sig_id);
+                while(waitpid(-1, &stat, WNOHANG) > 0)
+                    continue;
+            }
+        }
+    }
+    
+    if(flag==1)
+        return 0;
+    return 1;
+}
+
+int shell_fg()
+{
+    if(cmd.argc != 2)
+        return 1;
+    int job=atoi(cmd.argv[1]);
+    int cnt = 0, stat, flag=0;
+    for(int i=0; i<bgcount; i++)
+    {
+        if(kill(proc_list[i].id, 0) == 0 && i+1 == job)
+        {
+            kill(proc_list[i].id, getpid());
+            proc_list[i].state = 1;
+            current_p = proc_list[i];
+            flag=1;
+            waitpid(proc_list[i].id, &stat, WUNTRACED);
+        }
+    }
+    if(flag==1)
+        return 0;
+    return 1;
+}
+
+int shell_bg()
+{
+    if(cmd.argc != 2)
+        return 1;
+    int job = atoi(cmd.argv[1]);
+    int cnt=0, stat, flag=0;
+    for(int i=0; i<bgcount; i++)
+    {
+        if(kill(proc_list[i].id, 0) == 0 && i+1 == job)
+        {
+            kill(proc_list[i].id, SIGTSTP);
+            flag=1;
+        }
+    }
+    if(flag==1)
+        return 0;
+    return 1;
+}
+
+int shell_overkill()
+{
+    for(int i=0; i<bgcount; i++)
+    {
+        kill(proc_list[i].id, 9);
+    }
+    return 0;
+}
+
+int shell_quit()
+{
+    for(int i=0; i<bgcount; i++)
+    {
+        kill(proc_list[i].id, 9);
+    }
+    exit(0);
 }
 
 int shell_execvp()
@@ -219,7 +378,7 @@ int shell_pinfo()
     int fd = open(dir,O_RDONLY);
     if(fd == -1)
     {
-        printf("Process doesnot exist\n");
+        printf("Process does not exist\n");
         return 0;
     }
     char buf[4096];
@@ -449,7 +608,7 @@ int eval(char *token)
 {
     int bg;
     cmd.argc = 0;
-    printf("Evaluating '%s'\n",token);
+    //printf("Evaluating '%s'\n",token);
     
     if(token==NULL)
     {
@@ -528,7 +687,7 @@ int eval(char *token)
     //     return !shell_ls();
         
     // }
-     if(!strcmp(cmd.argv[0],"cd"))
+    if(!strcmp(cmd.argv[0],"cd"))
     {
         //printf("Evaluating change dir\n");
         return !shell_cd();
@@ -567,36 +726,49 @@ int eval(char *token)
     {
         return !shell_jobs();
     }
-    else
+    else if(!strcmp(cmd.argv[0],"kjob"))
     {
-        
-        pid_t pid = fork();
+        return !shell_kjob();
+    }
+    else if(!strcmp(cmd.argv[0],"fg"))
+    {
+        return !shell_fg();
+    }
+     else if(!strcmp(cmd.argv[0],"bg"))
+    {
+        return !shell_bg();
+    }
+     else if(!strcmp(cmd.argv[0],"overkill"))
+    {
+        return !shell_overkill();
+    }
+     else if(!strcmp(cmd.argv[0],"quit"))
+    {
+        return !shell_quit();
+    }
+    else
+    {  
         int status;
+        int is_reminder=0;
+        if(!strcmp(cmd.argv[0],"remindme"))
+        {
+            is_reminder = 1;
+        }
+
+        pid_t pid = fork();
+
         if(pid == -1)
         {
             printf("Error forking\n");
         }
-        else if(pid!=0)
-        {
-            if(bg!=1)
-            {   
-                waitpid(pid,&status,WUNTRACED);    
-            }
-            else
-            {
-                bg_order[bgcount++]=pid;
-                bg_processes[pid]=malloc(1024);
-                strcpy(bg_processes[pid],cmd.argv[0]);
-                waitpid(pid,&status,WNOHANG);
-            }
-        }
+
         else if(pid==0)
         {
-            bg_processes[getpid()]=cmd.argv[0];
+            if(bg==1 || is_reminder==1)
+                setpgid(0,0);
             if(!strcmp(cmd.argv[0],"remindme"))
             {
-                //printf("Executing Remindme");
-                
+                is_reminder = 1;
                 shell_reminder();
                 exit(0);
             }
@@ -609,6 +781,26 @@ int eval(char *token)
                 exit(0);
             }
         }
+
+        //if(pid != 0)
+            
+        
+        if(bg==1 || is_reminder==1)
+        {
+            proc_list[bgcount].id = (int)pid;
+            proc_list[bgcount].state = 0;
+			strcpy(proc_list[bgcount].name, cmd.argv[0]);
+	    	++bgcount;
+    		waitpid(pid, &status, WNOHANG);
+        }
+        else
+        {
+            current_p.id = pid;
+            current_p.state = 1;
+            strcpy(current_p.name, cmd.argv[0]);
+            waitpid(pid, &status, WUNTRACED);
+        }
+
     }
     dup2(inpo,0);
     dup2(outo,1);
@@ -616,7 +808,6 @@ int eval(char *token)
 
 int pipehandler(char *command)
 {
-
     // printf("Command:%s\n",command);
     char *commands[MAXARGS];
     int idk=0;
@@ -674,12 +865,46 @@ int main(int argc, char **argv)
         printf("No memory\n");
         return 1;
     }
-    signal(SIGCHLD, exit_handler);
+    //signal(SIGCHLD, exit_handler);
     // signal(SIGINT, sigint_handler);
     // signal(SIGTSTP, stop_handler);
+    int parity=0;
     do
     {
+        signal(SIGINT, exit_handler);
+        signal(SIGTSTP, exit_handler);
+        //signal(SIGTSTP, SIG_IGN);
+        int stat;
+        while(waitpid(-1, &stat, WNOHANG) > 0);
         
+        struct proc temp[1024];
+        int idx, cnt = 0, hold;
+
+        for(int i = 0; i < bgcount; ++i)
+        {
+            //printf("%s\n", proc_list[i].name);
+            hold = kill(proc_list[i].id, 0);
+            if(hold == -1 && errno == ESRCH)
+            {
+                printf("%s with pid %d exitted normally\n", proc_list[i].name, proc_list[i].id);
+                continue;
+            }
+            temp[cnt++] = proc_list[i];
+        }
+        bgcount = cnt;
+        for(int i = 0; i < bgcount; i++)
+            proc_list[i] = temp[i];
+        
+        strcpy(current_p.name, "__!!!>>>%^%^");
+        current_p.id = -1;
+        current_p.state = -1;
+
+        if(parity == 0)
+        {
+            parity = 1;
+            continue;
+        }
+    
         printf("%s ",prompt);
         
         if((fgets(cmdline,MAXLINE,stdin)==NULL) && ferror(stdin))
@@ -706,7 +931,6 @@ int main(int argc, char **argv)
         }
         for(int j=0;j<idk;j++)
         {
-            
             pipehandler(commands[j]);
         }
         // evaluates the given command. Also parses it before that
