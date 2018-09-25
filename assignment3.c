@@ -868,7 +868,7 @@ int main(int argc, char **argv)
     //signal(SIGCHLD, exit_handler);
     // signal(SIGINT, sigint_handler);
     // signal(SIGTSTP, stop_handler);
-    int parity=0;
+    // int parity=0;
     do
     {
         signal(SIGINT, exit_handler);
@@ -899,12 +899,6 @@ int main(int argc, char **argv)
         current_p.id = -1;
         current_p.state = -1;
 
-        if(parity == 0)
-        {
-            parity = 1;
-            continue;
-        }
-    
         printf("%s ",prompt);
         
         if((fgets(cmdline,MAXLINE,stdin)==NULL) && ferror(stdin))
