@@ -54,7 +54,7 @@ void sigint_handler (int sig)
 
 void exit_handler(int sig)
 {
-    printf("__in__\n");
+    //printf("__in__\n");
     if(sig == SIGINT)
     {
         //int killable = 1;
@@ -65,17 +65,39 @@ void exit_handler(int sig)
                 if(proc_list[i].state==1)
                 {
                     kill(proc_list[i].id, SIGINT);
+                    break;
                     //killable = 0;
                 }
             }
         }
         //if(killable == 1)
         //    kill(current_p.id, SIGINT);
-            
+        int leave = 0;
+        if(current_p.id > 0)
+        {
+            for(int j=0;j<bgcount;++j)
+            {
+                if(kill(proc_list[j].id,0) == 0)
+                {
+                    if(proc_list[j].state == 0 && proc_list[j].id == current_p.id)
+                    {
+                        leave = 1;
+                        break;
+                    }
+                }
+            }
+            if(leave == 0)
+            {
+                kill(current_p.id, SIGINT);
+            }
+            strcpy(current_p.name, "__!!!>>>%^%^");
+            current_p.id = -1;
+            current_p.state = -1;
+        }
         signal(SIGINT, SIG_IGN);
     }
     
-    if(sig == SIGSTOP);
+    if(sig == SIGSTOP)
         signal(SIGSTOP, SIG_IGN);
 
     if(sig == SIGTSTP);
@@ -87,8 +109,8 @@ void exit_handler(int sig)
             proc_list[bgcount].state = 0;
             printf("Current Process id = %d\n", current_p.id);
             bgcount++;
-            printf("Total # of Processes : %d\n", bgcount);
             kill(current_p.id, SIGTSTP);
+
 
             strcpy(current_p.name, "__!!!>>>%^%^");
             current_p.id = -1;
@@ -231,31 +253,43 @@ int shell_clock()
 
 int shell_jobs()
 {
-    printf("Background Process Count : %d\n", bgcount);
+	int bad=0;
+	for(int j=0;j<bgcount;++j)
+	{
+		if(kill(proc_list[j].id, 0) == 0)
+		{
+			if(proc_list[j].state == 1)
+				++bad;
+		}
+	}
+    printf("Background Process Count : %d\n", bgcount - bad);
     int on,idx=1;
     for(int i=0;i<bgcount;i++)
     {
-       if(kill(proc_list[i].id, 0) == 0)
-       {
-            char dir[100];
-            sprintf(dir,"/proc/%d/status",proc_list[i].id);
-            int fd = open(dir, O_RDONLY);
-            char buf[4096];
-            read(fd,buf,4096);
-            char *line;
-            line = strtok(buf,"\n");
-            line = strtok(0,"\n");
-            line = strtok(0,"\n");
-            //printf("Process %s\n",line);
-            //printf("Status %c\n",line[7]); 
-            char status[128];
-            if(line[7] == 'T')
-                strcpy(status, "STOPPED");
-            else
-                strcpy(status, "RUNNING");  
-            printf("[%d]\t%s\t%s\t[%d]\n", idx, status, proc_list[i].name, proc_list[i].id);
-            idx++;
-       }
+		if(kill(proc_list[i].id, 0) == 0)
+		{
+       		if(proc_list[i].state == 0)
+       		{
+	            char dir[100];
+	            sprintf(dir,"/proc/%d/status",proc_list[i].id);
+	            int fd = open(dir, O_RDONLY);
+	            char buf[4096];
+	            read(fd,buf,4096);
+	            char *line;
+	            line = strtok(buf,"\n");
+	            line = strtok(0,"\n");
+	            line = strtok(0,"\n");
+	            //printf("Process %s\n",line);
+	            //printf("Status %c\n",line[7]); 
+	            char status[128];
+	            if(line[7] == 'T')
+	                strcpy(status, "STOPPED");
+	            else
+	                strcpy(status, "RUNNING");  
+	            printf("[%d]\t%s\t%s\t[%d]\n", idx, status, proc_list[i].name, proc_list[i].id);
+	            idx++;
+	        }
+		}
     }
     return 0;
 }
@@ -271,14 +305,17 @@ int shell_kjob()
     {
         if(kill(proc_list[i].id, 0) == 0)
         {
-            cnt++;
-            if(i+1 == job_id)
-            {
-                flag = 1;
-                kill(proc_list[i].id, sig_id);
-                while(waitpid(-1, &stat, WNOHANG) > 0)
-                    continue;
-            }
+        	if(proc_list[i].state == 0)
+        	{
+	            cnt++;//not needed as of now
+	            if(i+1 == job_id)
+	            {
+	                flag = 1;
+	                kill(proc_list[i].id, sig_id);
+	                while(waitpid(-1, &stat, WNOHANG) > 0)
+	                    continue;
+	            }
+	        }
         }
     }
     
@@ -295,13 +332,17 @@ int shell_fg()
     int cnt = 0, stat, flag=0;
     for(int i=0; i<bgcount; i++)
     {
-        if(kill(proc_list[i].id, 0) == 0 && i+1 == job)
+        if(kill(proc_list[i].id, 0) == 0)
         {
-            kill(proc_list[i].id, getpid());
-            proc_list[i].state = 1;
-            current_p = proc_list[i];
-            flag=1;
-            waitpid(proc_list[i].id, &stat, WUNTRACED);
+        	if(job == i+1 && proc_list[i].state == 0)
+        	{
+	            //kill(proc_list[i].id, getpid());//why?
+	            proc_list[i].state = 1;
+	            current_p = proc_list[i];
+	            flag=1;
+	            waitpid(proc_list[i].id, &stat, WUNTRACED);
+                break;
+	        }
         }
     }
     if(flag==1)
@@ -317,10 +358,14 @@ int shell_bg()
     int cnt=0, stat, flag=0;
     for(int i=0; i<bgcount; i++)
     {
-        if(kill(proc_list[i].id, 0) == 0 && i+1 == job)
+        if(kill(proc_list[i].id, 0) == 0)
         {
-            kill(proc_list[i].id, SIGTSTP);
-            flag=1;
+        	if(job == i+1 && proc_list[i].state == 0)
+        	{
+            	kill(proc_list[i].id, SIGCONT);
+            	flag=1;
+                break;
+        	}
         }
     }
     if(flag==1)
@@ -764,8 +809,8 @@ int eval(char *token)
 
         else if(pid==0)
         {
-            if(bg==1 || is_reminder==1)
-                setpgid(0,0);
+            //if(bg==1 || is_reminder==1)
+            setpgid(0,0);
             if(!strcmp(cmd.argv[0],"remindme"))
             {
                 is_reminder = 1;
@@ -860,7 +905,7 @@ int main(int argc, char **argv)
     makeprompt();
     
 
-    cmdline = malloc(MAXLINE);
+    cmdline = (char *)malloc(MAXLINE);
     if (cmdline == NULL) {
         printf("No memory\n");
         return 1;
@@ -871,9 +916,10 @@ int main(int argc, char **argv)
     // int parity=0;
     do
     {
+        signal(SIGSTOP, exit_handler);
         signal(SIGINT, exit_handler);
         signal(SIGTSTP, exit_handler);
-        //signal(SIGTSTP, SIG_IGN);
+        
         int stat;
         while(waitpid(-1, &stat, WNOHANG) > 0);
         
@@ -889,7 +935,8 @@ int main(int argc, char **argv)
                 printf("%s with pid %d exitted normally\n", proc_list[i].name, proc_list[i].id);
                 continue;
             }
-            temp[cnt++] = proc_list[i];
+            if(proc_list[i].state == 0)
+            	temp[cnt++] = proc_list[i];
         }
         bgcount = cnt;
         for(int i = 0; i < bgcount; i++)
@@ -929,6 +976,7 @@ int main(int argc, char **argv)
         }
         // evaluates the given command. Also parses it before that
         
-    }while(1);
+    }
+    while(1);
     return 0;
 }
